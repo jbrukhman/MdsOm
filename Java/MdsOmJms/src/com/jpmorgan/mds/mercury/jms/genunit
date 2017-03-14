@@ -1,0 +1,301 @@
+#!/bin/ksh
+#
+
+function ucaseType {
+	fVar=$1
+	f1=`echo $fVar | cut -c1`	# first char of name
+	f2=`echo $fVar | cut -c2-`	# rest of type name
+	f1=`echo $f1 | awk '{print toupper($0)}'`
+	ucase=$f1""$f2				# type name with uppercase first char
+}
+
+function getNames {
+	fVar=$1
+	fBase=$2
+	if [ $fVar == "byte[]" ]; then
+		setMethod="setBytes"
+		getMethod="getBytes"
+		varName="sub.bytesVar"
+		varNameM="bytesVarM"
+	elif [ $fVar == "short" ]; then
+		setMethod="setShort"
+		getMethod="getShort"
+		varNameM="shortVarM"
+		if [ $fd == "U8" ]; then
+			varName="sub.shortU8Var"
+		else
+			varName="sub.shortVar"
+		fi
+	elif [ $fVar == "String" ]; then
+		setMethod="setString"
+		getMethod="getString"
+		varNameM="stringVarM"
+		if [ $fd == "BOOL" ]; then
+			varName="sub.stringBoolVar"
+		elif [ $fd == "TIME" ]; then
+			varName="sub.stringDateVar"
+		else
+			varName="sub.stringVar"
+		fi
+	else
+		setMethod="set"${ucase}
+		getMethod="get"${ucase}
+		varName="sub.${fVar}Var"
+		varNameM="${fVar}VarM"
+	fi
+
+	if [ $fBase == "string" ]; then
+		if [ $fd == "BOOL" ]; then
+			varNameB="sub.stringBoolVar"
+		elif [ $fd == "TIME" ]; then
+			varNameB="sub.stringDateVar"
+		elif [ $t == "boolean" ]; then
+			varNameB="sub.stringBoolVar"
+		else
+			varNameB="sub.stringVar"
+		fi
+	elif [ $fBase == "short" ]; then
+		if [ $fd == "U8" ]; then 
+			varNameB="sub.shortU8Var"
+		else
+			varNameB="sub.${fBase}Var"
+		fi
+	else
+		varNameB="sub.${fBase}Var"
+	fi
+}
+
+jtypes="
+boolean
+char
+byte
+short
+int
+long
+float
+double
+byte[]
+String
+"
+
+# OMtype:write:read:fieldName
+mtypes="
+BOOL:String,boolean,end:String,boolean,end:wDiscountAskIsCalc,boolean
+CHAR:char,end:char,end:wMocTradeChar,char
+U8:byte,char,short,String,end:short,int,long,String,end:wMsgQual,short
+U32:byte,short,int,long,String,end:long,String,end:MdServiceLevel,long
+I64:byte,short,int,long,String,end:long,String,end:wClosingMarketValue,long
+U64:byte,short,int,long,String,end:long,String,end:wContractSizeOrig,long
+F64:byte,short,int,long,float,double,String,end:double,String,end:wParity,double
+STRING:byte,short,int,long,float,double,String,boolean,end:byte,short,int,long,float,double,String,boolean,end:wDividendType,string
+PRICE:double,String,end:double,String,end:wForeignPrice,double
+TIME:String,end:String,end:wRedemptionDate,string
+OPAQUE:byte[],end:byte[],end:ProtocolBuffer,bytes
+"
+
+rm -f ucode
+rm -f ucode1
+rm -f ucode2
+
+echo "" >> ucode
+echo "package com.jpmorgan.mds.mercury.jms.unittests;" >> ucode
+echo "" >> ucode
+echo "import javax.jms.JMSException;" >> ucode
+echo "import javax.jms.MapMessage;" >> ucode
+echo "" >> ucode
+
+echo "class SubscribeFieldCheck {" >> ucode
+echo "	private Subscribe sub = null;" >> ucode
+echo "" >> ucode
+echo "	SubscribeFieldCheck(Subscribe sub) {" >> ucode
+echo "		this.sub = sub;" >> ucode
+echo "	}" >> ucode
+echo "" >> ucode
+
+echo "	public void checkWriteFields(MapMessage map) {" >> ucode1
+echo "		// TODO mark start of method" >> ucode1
+
+echo "	public void checkReadFields(MapMessage map) {" >> ucode2
+echo "		// TODO mark start of method" >> ucode2
+echo "		boolean booleanVarM;" >> ucode2
+echo "		char charVarM;" >> ucode2
+echo "		byte byteVarM;" >> ucode2
+echo "		short shortVarM;" >> ucode2
+echo "		int intVarM;" >> ucode2
+echo "		long longVarM;" >> ucode2
+echo "		float floatVarM;" >> ucode2
+echo "		double doubleVarM;" >> ucode2
+echo "		byte[] bytesVarM;" >> ucode2
+echo "		String stringVarM;" >> ucode2
+echo "" >> ucode2
+
+for mt in $mtypes
+do
+	sav=$IFS
+
+	IFS=":"
+	set -A tokens $mt
+	fd=${tokens[0]}			# mama field name
+	vs=${tokens[1]}			# types allowed to write
+	vr=${tokens[2]}			# types allowed to read
+	fname=${tokens[3]}		# field name and type to test
+
+	IFS=","
+	set -A writeVars $vs
+	set -A readVars $vr
+	set -A fnameVars $fname
+
+	IFS=$sav
+
+	fname=${fnameVars[0]}
+	baseType=${fnameVars[1]}
+
+	echo "" >> ucode1
+	echo "		// --- OpenMAMA $fd type --------------------------------------------" >> ucode1
+
+	echo "" >> ucode2
+	echo "		// --- OpenMAMA $fd type --------------------------------------------" >> ucode2
+
+	for t in $jtypes
+	do
+		ucaseType $t
+		getNames $t $baseType
+
+		# check if this is permitted write action
+		throw=1
+		index=0
+		while true
+		do
+			v=${writeVars[index]}
+			index=`expr $index + 1`
+			if [ $v == "end" ]; then
+				break
+			fi
+			if [ $v == $t ]; then
+				throw=0
+				break
+			fi
+		done
+		if [ $throw -eq 1 ]; then
+			result="exception"
+		else
+			result="success"
+		fi
+
+		# Setters to msg
+		echo "" >> ucode1
+		echo "		// Set $t into a $fd field - expect $result" >> ucode1
+		echo "		try {" >> ucode1
+		echo "			map.$setMethod(\"${fname}\", $varName);" >> ucode1
+		if [ $throw -eq 1 ]; then >> ucode1
+			echo "			System.err.println(\"$setMethod succeeded in error for setting $t into a $fd field\");" >> ucode1
+			echo "			sub.ok = false;" >> ucode1
+		fi >> ucode1
+		echo "		} catch (JMSException e1) {" >> ucode1
+		if [ $throw -eq 1 ]; then >> ucode1
+			echo "			// Expect exception" >> ucode1
+		else >> ucode1
+			echo "			System.err.println(\"$setMethod failed in error for setting $t into a $fd field ex=\" + e1.getMessage());" >> ucode1
+			echo "			sub.ok = false;" >> ucode1
+		fi >> ucode1
+		echo "		} catch (Exception e2) {" >> ucode1
+		echo "			// This should never be thrown anytime" >> ucode1
+		echo "			System.err.println(\"$setMethod failed in error for setting $t into a $fd field ex=\" + e2.getMessage());" >> ucode1
+		echo "			sub.ok = false;" >> ucode1
+		echo "		}" >> ucode1
+
+		# check if this is permitted read action
+		throw=1
+		index=0
+		while true
+		do
+			v=${readVars[index]}
+			index=`expr $index + 1`
+			if [ $v == "end" ]; then
+				break
+			fi
+			if [ $v == $t ]; then
+				throw=0
+				break
+			fi
+		done
+		if [ $throw -eq 1 ]; then
+			result="exception"
+		else
+			result="success"
+		fi
+
+		# Getters from msg
+		echo "" >> ucode2
+		echo "		// Get $t from a $fd field - expect $result" >> ucode2
+		echo "		try {" >> ucode2
+		echo "			$varNameM = map.$getMethod(\"${fname}\");" >> ucode2
+		if [ $throw -eq 1 ]; then >> ucode2
+			echo "			System.err.println(\"$getMethod succeeded in error for getting $t from a $fd field\");" >> ucode2
+			echo "			sub.ok = false;" >> ucode2
+		else
+			if [ $t == "String" ]; then
+				echo "			String tmpString1 = String.valueOf($varNameB);" >> ucode2
+				echo "			if (!tmpString1.equals($varNameM)) {" >> ucode2
+				echo "				System.err.println(\"$getMethod: failed for comparison $t from a $fd field ($fname) '\" + $varNameB + \"/\" + tmpString1 + \"' '\" + $varNameM + \"'\");" >> ucode2
+			elif [ $fd == "STRING" ]; then
+				echo "			String tmpString2 = String.valueOf($varNameM);" >> ucode2
+				echo "			if (!tmpString2.equals($varNameB)) {" >> ucode2
+				echo "				System.err.println(\"$getMethod: failed for comparison $t from a $fd field ($fname) '\" + $varNameB + \"' '\" + $varNameM + \"/\" + tmpString2 + \"'\");" >> ucode2
+			elif [ $t == "byte[]" ]; then
+				echo "			if (!java.util.Arrays.equals($varNameB, $varNameM)) {" >> ucode2
+				echo "				System.err.println(\"$getMethod: failed for comparison $t from a $fd field ($fname) '\" + $varNameB + \"' '\" + $varNameM + \"'\");" >> ucode2
+			else
+				echo "			if ($varNameB != $varNameM) {" >> ucode2
+				echo "				System.err.println(\"$getMethod: failed for comparison $t from a $fd field ($fname) '\" + $varNameB + \"' '\" + $varNameM + \"'\");" >> ucode2
+			fi
+			echo "				sub.ok = false;" >> ucode2
+			echo "			}" >> ucode2
+		fi >> ucode2
+		echo "		} catch (JMSException e1) {" >> ucode2
+		if [ $throw -eq 1 ]; then >> ucode2
+			echo "			// Expect exception" >> ucode2
+		else >> ucode2
+			echo "			System.err.println(\"$getMethod failed in error for getting $t from a $fd field ex=\" + e1.getMessage());" >> ucode2
+			echo "			sub.ok = false;" >> ucode2
+		fi >> ucode2
+		echo "		} catch (Exception e2) {" >> ucode2
+		echo "			// This should never be thrown anytime" >> ucode2
+		echo "			System.err.println(\"$getMethod failed in error for getting $t from a $fd field ex=\" + e2.getMessage());" >> ucode2
+		echo "			sub.ok = false;" >> ucode2
+		echo "		}" >> ucode2
+	done
+
+	# Write last time to this var with java type that matches the openmama type
+	ucaseType $baseType
+	getNames $baseType $baseType
+	echo "" >> ucode1
+	echo "		try {" >> ucode1
+	echo "			// Now write the $fd base type for later comparison" >> ucode1
+	echo "			map.$setMethod(\"${fname}\", $varNameB);" >> ucode1
+	echo "		} catch (JMSException e1) {" >> ucode1
+	echo "			System.err.println(\"$setMethod failed in error for setting $baseType into a $fd field ex=\" + e1.getMessage());" >> ucode1
+	echo "			sub.ok = false;" >> ucode1
+	echo "		} catch (Exception e2) {" >> ucode1
+	echo "			// This should never be thrown anytime" >> ucode1
+	echo "			System.err.println(\"$setMethod failed in error for setting $baseType into a $fd field ex=\" + e2.getMessage());" >> ucode1
+	echo "			sub.ok = false;" >> ucode1
+	echo "		}" >> ucode1
+done
+
+echo "	}" >> ucode1
+echo "" >> ucode1
+
+echo "	}" >> ucode2
+echo "" >> ucode2
+
+
+cat ucode ucode1 ucode2 > SubscribeFieldCheck.java
+
+echo "}" >> SubscribeFieldCheck.java
+echo "" >> SubscribeFieldCheck.java
+
+cp SubscribeFieldCheck.java ~
+
+exit 0
+

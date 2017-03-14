@@ -1,0 +1,70 @@
+<project name="MdsOmHelperClasses" default="dist" basedir=".">
+  <!-- set global properties for this build -->
+  <property name="src" location="src"/>
+  <property name="build" location="build"/>
+  <property name="dist"  location="dist"/>
+  <property environment="env"/>
+
+  <target name="init">
+    <!-- Create the timestamp -->
+	<tstamp/>
+    <!-- Create the build directory structure used by compile -->
+    <mkdir dir="${build}"/>
+    <mkdir dir="${dist}/lib"/>
+    <mkdir dir="${dist}/doc"/>
+  </target>
+
+  <condition property="isWindows" value="true" else="false">
+    <os family="windows" />
+  </condition>
+
+  <!-- external libraries classpath, we don't need sources and javadoc -->
+  <path id="classpath">
+    <fileset dir="${env.OPENMAMA_HOME}/lib">
+        <include name="mamajni.jar" />
+    </fileset>
+    <fileset dir="${env.RFA_JAVA_HOME}/Libs">
+        <include name="rfa.jar" />
+    </fileset>
+    <fileset dir="${env.DACS_JAVA_HOME}/Libs">
+        <include name="jDacslib.jar" />
+        <include name="rfa_dacs20.jar" />
+    </fileset>
+  </path>
+
+  <target name="winGet" depends="init" description="Get the mamajni jar into same dir as linux" if="${isWindows}">
+    <copy file="${env.OPENMAMA_HOME}/bin/release/mamajni.jar" toFile="${env.OPENMAMA_HOME}/lib/mamajni.jar" />
+  </target>
+
+  <target name="compile" depends="init,winGet" description="compile the source" >
+    <!-- Compile the java code from ${src} into ${build} -->
+    <javac srcdir="${src}" destdir="${build}" classpathref="classpath" source="1.6" debug="on" />
+    <jar jarfile="${dist}/lib/MdsOmHelper.jar" basedir="${build}"/>
+ </target>
+
+  <target name="winDist" depends="init" description="setup windows jar locations" if="${isWindows}">
+    <mkdir dir="${env.OPENMAMA_HOME}/bin/release}"/>
+    <copy file="${dist}/lib/MdsOmHelper.jar" toFile="${env.OPENMAMA_HOME}/bin/release/MdsOmHelper.jar" />
+    <mkdir dir="${env.OPENMAMA_HOME}/bin/debug"/>
+    <copy file="${dist}/lib/MdsOmHelper.jar" toFile="${env.OPENMAMA_HOME}/bin/debug/MdsOmHelper.jar" />
+  </target>
+
+  <target name="dist" depends="compile,winDist" description="generate the distribution" >
+    <copy file="${dist}/lib/MdsOmHelper.jar" toFile="${env.OPENMAMA_HOME}/lib/MdsOmHelper.jar" />
+  </target>
+
+  <target name="doc" depends="init" description="generate the docs" >
+    <javadoc destdir="${dist}/doc" >
+      <fileset dir="${src}" casesensitive="yes">
+        <include name="**/*.java"/>
+	  </fileset>
+    </javadoc>
+  </target>
+
+  <target name="clean" description="clean up" >
+    <!-- Delete the ${build} and ${dist} directory trees -->
+    <delete dir="${build}"/>
+    <delete dir="${dist}"/>
+  </target>
+</project>
+

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)VS_$(VisualStudioVersion)\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>VS_$(VisualStudioVersion)\$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(OPENMAMA_HOME)/$(PlatformTarget)-windows-7-vc$(PlatformToolsetVersion)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+		<AdditionalLibraryDirectories>$(OPENMAMA_HOME)/$(PlatformTarget)-windows-7-vc$(PlatformToolsetVersion)/lib/$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(ProjectName)'=='MdsOm'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(RFA_CPP_HOME)/Include;$(RFA_CPP_HOME)/Include/Dacs;$(DACS_CPP_HOME)/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <PostBuildEvent>
+      <Command>
+        SetLocal
+        SETLOCAL ENABLEEXTENSIONS
+        SETLOCAL ENABLEDELAYEDEXPANSION
+
+        REM copy libs based on bits and config
+
+        if $(VisualStudioVersion)==11.0 (
+        set vc=110
+        ) else (
+        set vc=120
+        )
+        if $(Platform)==x64 (
+        set vb=x64
+        ) else (
+        set vb=x86
+        )
+        set OM_HOME=$(OPENMAMA_HOME)\%vb%-windows-7-vc%vc%
+
+        echo %vc% %vb% $(Configuration)
+        copy "$(OutputPath)MdsOm.dll" "%OM_HOME%\bin\$(Configuration)\MdsOm.dll"
+        copy "$(OutputPath)MdsOm.lib" "%OM_HOME%\lib\$(Configuration)\MdsOm.lib"
+
+        REM header files are same for bits and config, so copy them to both
+        for %%f in (MdsOm.h MdsOmConfig.h MdsOmEnv.h MdsOmStatus.h MdsOmLock.h MdsOmAction.h MdsOmSubscription.h MdsOmList.h MdsOmPublisher.h MdsOmTransportCallback.h MdsOmTransports.h MdsOmTransportTopicCallback.h) do (
+        echo %%f
+        copy "$(ProjectDir)%%f" "%OM_HOME%\include\MdsOm\%%f"
+        )
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(ProjectName)'=='MdsOmChain'">
+    <PostBuildEvent>
+      <Command>
+        SetLocal
+        SETLOCAL ENABLEEXTENSIONS
+        SETLOCAL ENABLEDELAYEDEXPANSION
+
+		if $(VisualStudioVersion)==11.0 (
+			set vc=110
+		) else (
+			set vc=120
+		)
+		if $(Platform)==x64 (
+			set vb=x64
+		) else (
+			set vb=x86
+		)
+		set OM_HOME=$(OPENMAMA_HOME)\%vb%-windows-7-vc%vc%
+
+        REM copy libs based on bits and config
+        echo x64 $(Configuration)
+        copy "$(OutputPath)MdsOmChain.dll" "%OM_HOME%\bin\$(Configuration)\MdsOmChain.dll"
+        copy "$(OutputPath)MdsOmChain.lib" "%OM_HOME%\lib\$(Configuration)\MdsOmChain.lib"
+
+        REM header files are same for bits and config, so copy them to both
+        for %%f in (MdsOmChainApp.h MdsOmChainCallback.h MdsOmSubChain.h MdsOmPubChain.h MdsOmDataLink.h MdsOmChainLinkType.h) do (
+            echo %%f
+            copy "$(ProjectDir)%%f" "%OM_HOME%\include\MdsOm\%%f"
+        )
+      </Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+
+  <ItemGroup />
+</Project>
